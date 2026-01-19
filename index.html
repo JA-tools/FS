@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIRE-Strategen v7.15</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --p-blue: #2563eb; }
+        body { background: #f8fafc; font-family: 'Inter', sans-serif; color: #0f172a; }
+        .card { background: white; border-radius: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        
+        /* Kategorifärger */
+        .cat-economy { border-top: 5px solid #3b82f6; }
+        .cat-pension { border-top: 5px solid #a855f7; }
+        .cat-strategy { border-top: 5px solid #f59e0b; }
+        .cat-expert { border-top: 5px solid #64748b; }
+
+        .input-pill { background: #f1f5f9; border-radius: 12px; padding: 0.5rem 0.75rem; border: 1.5px solid transparent; transition: all 0.2s; }
+        .input-pill:focus-within { border-color: var(--p-blue); background: white; }
+        .label-tiny { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+        
+        /* Tabellrader baserat på fas */
+        .phase-bg-SPARA { background: #ffffff; }
+        .phase-bg-BRYGGA { background: #f0f7ff; border-left: 4px solid #3b82f6 !important; }
+        .phase-bg-UTTAG { background: #f0fdf4; border-left: 4px solid #22c55e !important; }
+        
+        .status-gap { background: #fff1f2; color: #e11d48; font-weight: 800; }
+        .status-broke { background: #450a0a !important; color: #fca5a5 !important; }
+
+        /* Custom Toggle Switch */
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #475569; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--p-blue); }
+        input:checked + .slider:before { transform: translateX(14px); }
+
+        .faq-details summary { list-style: none; cursor: pointer; }
+        .faq-details summary::-webkit-details-marker { display: none; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        
+        /* Animation för expanderande box */
+        .expand-enter-active, .expand-leave-active { transition: all 0.3s ease-out; max-height: 500px; opacity: 1; }
+        .expand-enter-from, .expand-leave-to { max-height: 0; opacity: 0; overflow: hidden; }
+
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak class="min-h-screen p-4 md:p-8">
+        
+        <div v-if="view === 'quiz'" class="min-h-screen flex items-center justify-center p-4">
+            <div class="card p-10 max-w-lg w-full shadow-2xl relative overflow-hidden">
+                <div class="absolute top-0 left-0 h-1 bg-blue-600 transition-all duration-500" :style="{width: ((currentStep+1)/questions.length*100)+'%'}"></div>
+                <div class="mb-8">
+                    <span class="text-blue-600 font-bold text-sm uppercase tracking-widest">Steg {{ currentStep + 1 }} av {{ questions.length }}</span>
+                    <h2 class="text-3xl font-800 mt-2 leading-tight">{{ questions[currentStep].text }}</h2>
+                    <p class="text-slate-400 text-sm mt-2">{{ questions[currentStep].desc }}</p>
+                </div>
+                <div class="relative mb-10">
+                    <input type="number" v-model.number="state[questions[currentStep].key]" 
+                           class="w-full text-5xl font-800 border-b-4 outline-none pb-2 focus:border-blue-600 transition-colors"
+                           @keyup.enter="nextStep" autofocus>
+                    <span v-if="questions[currentStep].unit" class="absolute right-0 bottom-4 text-2xl text-slate-300 font-bold">{{ questions[currentStep].unit }}</span>
+                </div>
+                <div class="flex gap-4">
+                    <button v-if="currentStep > 0" @click="prevStep" class="flex-1 bg-slate-100 py-4 rounded-xl font-800 text-slate-600">Bakåt</button>
+                    <button @click="nextStep" class="flex-[2] bg-blue-600 text-white py-4 rounded-xl font-800 shadow-lg shadow-blue-200">
+                        {{ currentStep === questions.length - 1 ? 'Visa Strategi' : 'Nästa steg' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+    <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black italic shadow-lg shadow-blue-200">
+        F
+    </div>
+    
+    <div class="flex flex-col leading-none">
+        <h1 class="font-900 italic text-xl uppercase tracking-tighter">
+            <br>
+            FIRE<span class="text-blue-600">STRATEGEN</span>
+        </h1>
+        <span class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-0.5">
+            Av Johannes Abrahamsson
+        </span>
+        <br>
+    </div>
+</div>
+
+                <div class="flex flex-wrap gap-2">
+                    <button @click="isReal = !isReal" class="text-[10px] font-bold uppercase bg-slate-100 px-4 py-2 rounded-lg">{{ isReal ? 'Köpkraft (Real)' : 'Saldon (Nom)' }}</button>
+                    <button @click="saveToCache" class="text-[10px] font-bold uppercase bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg">Spara i webbläsaren</button>
+                    <button @click="downloadPlan" class="text-[10px] font-bold uppercase bg-slate-100 px-4 py-2 rounded-lg">Ladda ner .json</button>
+                    <button @click="triggerUpload" class="text-[10px] font-bold uppercase bg-slate-100 px-4 py-2 rounded-lg">Ladda upp fil</button>
+                    <input type="file" ref="fileInput" class="hidden" @change="uploadPlan">
+                    <button @click="resetToQuiz" class="text-[10px] font-bold uppercase bg-red-50 text-red-600 px-4 py-2 rounded-lg">Nollställ</button>
+                    <button @click="advanced = !advanced" class="bg-slate-900 text-white px-6 py-2 rounded-lg text-[10px] font-bold uppercase hover:bg-slate-800 transition-all">
+                        {{ advanced ? 'Inställningar' : 'Visa Inställningar' }}
+                    </button>
+                </div>
+        <br>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-4 space-y-6">
+                    
+                    <div class="bg-slate-900 text-white p-8 rounded-[2rem] shadow-xl border-b-8 border-blue-600 transition-all duration-300">
+                        <div class="flex justify-between items-start mb-6">
+                            <div>
+                                <p class="label-tiny text-slate-400">Månadssparande (År 1)</p>
+                                <div class="text-5xl font-800 tracking-tighter my-2">
+                                    {{ formatKr(state.manualMonthlySaving) }} <span class="text-lg text-slate-500">kr</span>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <label class="label-tiny block text-slate-400 mb-1">Autopilot</label>
+                                <label class="switch">
+                                    <input type="checkbox" v-model="state.autoOptimize">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <transition name="expand">
+                            <div v-if="!state.autoOptimize" class="space-y-2 pt-2 border-t border-white/10">
+                                <div class="flex justify-between items-center">
+                                    <h3 class="label-tiny text-blue-400">Manuell Sparplan</h3>
+                                    <button @click="addSavingsPhase" class="text-blue-400 text-[10px] font-bold hover:text-white transition-colors">+ NY SPARFAS</button>
+                                </div>
+                                <div class="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                                    <div v-for="(s, i) in state.savingsPlan" :key="i" class="flex items-center gap-2 bg-white/5 p-3 rounded-xl border border-white/10">
+                                        <div class="flex flex-col flex-1">
+                                            <label class="text-[8px] uppercase text-slate-500 font-bold mb-1">År (Från - Till)</label>
+                                            <div class="flex items-center gap">
+                                                <input type="number" v-model.lazy="s.start" class="w-10 bg-transparent text-xs font-bold text-white outline-none">
+                                                <span class="text-slate-600"></span>
+                                                <input type="number" v-model.lazy="s.end" class="w-10 bg-transparent text-xs font-bold text-white outline-none">
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-col flex-[2] min-w-0">
+                                            <label class="text-[8px] uppercase text-slate-500 font-bold mb-1">Månadsbelopp</label>
+                                            <input type="number" v-model.lazy="s.amount" class="w-full bg-white/10 px-2 py-1 rounded font-bold text-blue-400 text-sm text-left outline-none focus:bg-white/20">
+                                        </div>
+                                        <button @click="state.savingsPlan.splice(i, 1)" class="text-slate-500 hover:text-red-400 px-1">✕</button>
+                                    </div>
+                                </div>
+                                <p class="text-[9px] text-slate-500 italic">Tips: Planen ovan är i dagens penningvärde. Systemet inflationsjusterar automatiskt i tabellen.</p>
+                            </div>
+                        </transition>
+                    </div>
+
+                    <div v-if="advanced" class="space-y-4">
+                        <div class="card p-6 cat-economy space-y-4">
+                            <h3 class="label-tiny text-blue-600">Ekonomi & Tidslinje</h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="input-pill"><label class="label-tiny">Start FIRE (år)</label><input type="number" v-model.lazy="state.withdraw" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Sluta spara (år)</label><input type="number" v-model.lazy="state.stopSave" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Nuvarande Kapital</label><input type="number" v-model.lazy="state.capital" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">ROI Fonder %</label><input type="number" step="0.1" v-model.lazy="state.roiHigh" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                            </div>
+                        </div>
+
+                        <div class="card p-6 cat-pension space-y-4">
+                            <h3 class="label-tiny text-purple-600">Pension (Netto)</h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="input-pill"><label class="label-tiny">Allmän kr/mån</label><input type="number" v-model.lazy="state.pensionGeneral" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Allmän start</label><input type="number" v-model.lazy="state.pensionGeneralStart" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Tjänste kr/mån</label><input type="number" v-model.lazy="state.pensionService" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Tjänste start</label><input type="number" v-model.lazy="state.pensionServiceStart" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill col-span-2"><label class="label-tiny">Utbetalningsår Tjänstepension</label><input type="number" v-model.lazy="state.pensionServiceYears" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                            </div>
+                        </div>
+
+                        <div class="card p-6 cat-strategy space-y-4">
+                            <div class="flex justify-between items-center">
+                                <h3 class="label-tiny text-orange-600">Uttagsplan & Arv</h3>
+                                <button @click="addExpense" class="text-orange-600 text-[10px] font-bold">+ NY PERIOD</button>
+                            </div>
+                            <div class="input-pill"><label class="label-tiny">Slutålder & Målarv (Real)</label>
+                                <div class="flex gap-2">
+                                    <input type="number" v-model.lazy="state.endAge" class="w-1/3 bg-transparent font-bold text-sm outline-none">
+                                    <input type="number" v-model.lazy="state.legacy" class="w-2/3 bg-transparent font-bold text-sm outline-none text-right">
+                                </div>
+                            </div>
+                            <div class="space-y-2 max-h-[180px] overflow-y-auto pr-2 custom-scrollbar">
+                                <div v-for="(e, i) in state.expenses" :key="i" class="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border">
+                                    <input type="number" v-model.lazy="e.start" class="w-8 bg-transparent text-[10px] font-bold">
+                                    <span class="text-slate-300">-</span>
+                                    <span class="text-slate-300"></span>
+                                    <span class="text-slate-300"></span>
+                                    <input type="number" v-model.lazy="e.end" class="w-8 bg-transparent text-[10px] font-bold">
+                                    <input type="number" v-model.lazy="e.amount" class="flex-1 bg-white px-2 py-1 rounded font-bold text-blue-600 text-[11px] text-left">
+                                    <button @click="state.expenses.splice(i, 1)" class="text-slate-300">✕</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card p-6 cat-expert space-y-4">
+                            <button @click="state.showExpert = !state.showExpert" class="w-full flex justify-between items-center outline-none">
+                                <h3 class="label-tiny text-slate-500">Expertinställningar</h3>
+                                <span class="text-slate-400 text-xs">{{ state.showExpert ? 'Göm −' : 'Visa +' }}</span>
+                            </button>
+                            <div v-if="state.showExpert" class="grid grid-cols-2 gap-3 pt-2">
+                                <div class="input-pill"><label class="label-tiny">Inflation %</label><input type="number" step="0.1" v-model.lazy="state.inflation" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Statslåneränta %</label><input type="number" step="0.1" v-model.lazy="state.slr" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">ROI Uttag %</label><input type="number" step="0.1" v-model.lazy="state.roiLow" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Skattestart (år)</label><input type="number" v-model.lazy="state.taxFromPortfolioAge" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Krockkudde (år)</label><input type="number" v-model.lazy="state.cushionYears" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                                <div class="input-pill"><label class="label-tiny">Bankränta %</label><input type="number" step="0.1" v-model.lazy="state.cushionRate" class="w-full bg-transparent font-bold text-sm outline-none"></div>
+                            </div>
+                        </div>
+
+                        <div class="card p-6 bg-slate-50 border-none space-y-4">
+                            <h3 class="label-tiny text-slate-400">Hjälp & FAQ</h3>
+                            <div class="space-y-2">
+                                <details class="faq-details group">
+                                    <summary class="text-[11px] font-bold flex justify-between items-center text-slate-600 outline-none">
+                                        Måste jag höja mitt sparande varje år?
+                                        <span class="group-open:rotate-180 transition-transform">↓</span>
+                                    </summary>
+                                    <p class="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                                        <strong>Ja.</strong> Planen antar att ditt sparande behåller sin köpkraft. Om inflationen är 2% måste du höja insättningarna med 2% varje år för att nå målet. Se kolumnen "Månadssparande (kr)" i tabellen för exakta belopp framtida år.
+                                    </p>
+                                </details>
+                                <details class="faq-details group">
+                                    <summary class="text-[11px] font-bold flex justify-between items-center text-slate-600 outline-none">
+                                        Vad är en Sparplan?
+                                        <span class="group-open:rotate-180 transition-transform">↓</span>
+                                    </summary>
+                                    <p class="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                                        Med sparplanen kan du simulera livsförändringar. Du kanske vill spara 25 000 kr nu, men bara 10 000 kr när du skaffar barn eller hus om 5 år. Du kan lägga till hur många faser du vill fram till din FIRE-ålder.
+                                    </p>
+                                </details>
+                                <details class="faq-details group">
+                                    <summary class="text-[11px] font-bold flex justify-between items-center text-slate-600 outline-none">
+                                        Varför minskar kapitalet innan FIRE?
+                                        <span class="group-open:rotate-180 transition-transform">↓</span>
+                                    </summary>
+                                    <p class="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                                        Det är då <strong>Krockkudden</strong> fylls på. Pengar flyttas från den volatila börsen till ett tryggt bankkonto för att säkra dina första uttagsår.
+                                    </p>
+                                </details>
+                                <details class="faq-details group">
+                                    <summary class="text-[11px] font-bold flex justify-between items-center text-slate-600 outline-none">
+                                        Vad är "Real" vs "Nominellt"?
+                                        <span class="group-open:rotate-180 transition-transform">↓</span>
+                                    </summary>
+                                    <p class="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                                        <strong>Realvärde (Köpkraft):</strong> Rensat för inflation. 1M kr realt om 20 år betyder "saker som kostar 1M kr idag". <br>
+                                        <strong>Nominellt:</strong> Faktiska kronor på kontot i framtiden. På grund av inflationen krävs fler nominella kronor för att köpa samma sak.
+                                    </p>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-8">
+                    <div class="card p-6 h-[600px] shadow-lg relative border-none">
+                        <canvas id="fireChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card overflow-hidden shadow-xl border-none mt-6">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse min-w-[1200px]">
+                        <thead class="bg-slate-900 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                            <tr>
+                                <th class="px-6 py-5 text-center">Ålder</th>
+                                <th class="px-6 py-5">Total Kapital</th>
+                                <th class="px-6 py-5 text-right">Månadssparande (kr)</th>
+                                <th class="px-6 py-5 text-right">Fonder (ISK)</th>
+                                <th class="px-6 py-5 text-right">Krockkudde (Bank)</th>
+                                <th class="px-6 py-5 text-right">Årlig Skatt</th>
+                                <th class="px-6 py-5 text-right">Pension/mån</th>
+                                <th class="px-8 py-5 text-right">Budget (Mån)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 font-medium">
+                            <tr v-for="r in results" :key="r.age" 
+                                :class="[getRowClass(r.age), r.capNom <= 0 ? 'status-broke' : '']">
+                                <td class="px-6 py-4 text-center font-800 border-r">{{ r.age }}</td>
+                                <td class="px-6 py-4 font-800">{{ formatKr(isReal ? r.capReal : r.capNom) }}</td>
+                                <td class="px-6 py-4 text-right text-emerald-600 font-bold">
+                                    {{ r.savingNom > 0 ? formatKr(r.savingNom) : '—' }}
+                                </td>
+                                <td class="px-6 py-4 text-right text-slate-500">{{ formatKr(isReal ? r.investReal : r.investNom) }}</td>
+                                <td class="px-6 py-4 text-right text-blue-500 font-bold">{{ r.cushionNom > 0 ? formatKr(isReal ? r.cushionReal : r.cushionNom) : '—' }}</td>
+                                <td class="px-6 py-4 text-right font-bold" 
+                                    :class="r.age >= state.taxFromPortfolioAge ? 'text-red-400' : 'text-slate-300'">
+                                    {{ r.taxNom > 0 ? '-' + formatKr(isReal ? r.taxReal : r.taxNom) : '0 kr' }}
+                                </td>
+                                <td class="px-6 py-4 text-right">{{ formatKr(isReal ? r.pensionNetReal/12 : r.pensionNetNom/12) }}</td>
+                                <td class="px-8 py-4 text-right font-800 text-blue-600" :class="r.budgetReal === 0 ? 'status-gap' : ''">
+                                    {{ r.budgetReal === 0 ? '0 kr (Gap)' : formatKr(isReal ? r.budgetReal/12 : r.budgetNom/12) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+<script>
+const { createApp, ref, reactive, watch, nextTick, onMounted } = Vue;
+
+createApp({
+    setup() {
+        const view = ref('quiz');
+        const advanced = ref(false);
+        const isReal = ref(true);
+        const currentStep = ref(0);
+        const results = ref([]);
+        const fileInput = ref(null);
+        let chart = null;
+        let isOptimizing = false;
+
+        const state = reactive({
+            age: 30, capital: 100000, withdraw: 55, stopSave: 55, endAge: 85,
+            spend: 25000, legacy: 500000, salary: 45000,
+            roiHigh: 7.0, roiLow: 4.0, 
+            inflation: 2.0, 
+            slr: 2.2, 
+            taxFreeLimit: 300000,
+            taxFromPortfolioAge: 55, 
+            cushionYears: 2, cushionRate: 1.5, 
+            pensionGeneral: 0, pensionGeneralStart: 67,
+            pensionService: 0, pensionServiceStart: 67, pensionServiceYears: 12,
+            autoOptimize: true,
+            manualMonthlySaving: 0,
+            showExpert: false,
+            expenses: [],
+            savingsPlan: [] // NYTT: Lista över sparfaser
+        });
+
+        const questions = [
+            { key: 'age', text: 'Hur gammal är du idag?', desc: 'Din nuvarande ålder.', unit: 'år' },
+            { key: 'capital', text: 'Nuvarande kapital?', desc: 'Sparande på ISK eller KF idag.', unit: 'kr' },
+            { key: 'withdraw', text: 'När vill du gå i FIRE?', desc: 'Åldern då du vill sluta jobba.', unit: 'år' },
+            { key: 'stopSave', text: 'När vill du sluta månadsspara?', desc: 'Åldern då du slutar sätta in nya pengar.', unit: 'år' },
+            { key: 'spend', text: 'Önskad månadsbudget?', desc: 'Din köpkraft efter FIRE (mätt i dagens priser).', unit: 'kr/mån' },
+            { key: 'legacy', text: 'Önskat målarv?', desc: 'Målkapital vid din slutålder (Realvärde).', unit: 'kr' },
+            { key: 'salary', text: 'Din nuvarande lön?', desc: 'Används för att uppskatta din framtida pension.', unit: 'kr/brutto' }
+        ];
+
+        const calculateRetirementAge = (birthAge) => {
+            const birthYear = new Date().getFullYear() - birthAge;
+            if (birthYear >= 1970) return 70;
+            if (birthYear >= 1967) return 69;
+            if (birthYear >= 1960) return 68;
+            return 67;
+        };
+
+        const runSimulationEngine = (d) => {
+            const sim = [];
+            let cap = d.capital;
+            let cushion = 0;
+            const inflation = d.inflation / 100;
+            const taxRate = (Math.max(1.25, d.slr + 1.0)) / 100;
+
+            for (let age = d.age; age <= d.endAge; age++) {
+                const infFactor = Math.pow(1 + inflation, age - d.age);
+                const isWithdrawing = age >= d.withdraw;
+                
+                // Hitta aktiv sparfas för detta år
+                const activeSaving = d.savingsPlan.find(s => age >= s.start && age < s.end);
+                const currentMonthlySavingReal = activeSaving ? activeSaving.amount : 0;
+                const currentMonthlySavingNom = currentMonthlySavingReal * infFactor;
+                
+                const taxNom = Math.max(0, cap - d.taxFreeLimit) * taxRate;
+                if (age >= d.taxFromPortfolioAge) cap -= taxNom;
+
+                if (age === (d.withdraw - 3)) {
+                    const activeStep = d.expenses.find(e => d.withdraw >= e.start && d.withdraw < e.end);
+                    const budgetAtFireReal = activeStep ? activeStep.amount : d.spend;
+                    const targetCushion = (budgetAtFireReal * 12 * d.cushionYears) * infFactor;
+                    cap -= targetCushion; cushion += targetCushion;
+                }
+
+                const roi = isWithdrawing ? d.roiLow/100 : d.roiHigh/100;
+                cap *= (1 + roi);
+                cushion *= (1 + d.cushionRate/100);
+
+                // Applicera sparande
+                if (!isWithdrawing) {
+                    cap += (currentMonthlySavingNom * 12);
+                }
+
+                let budgetNom = 0, penNom = 0;
+                if (isWithdrawing) {
+                    const activeStep = d.expenses.find(e => age >= e.start && age < e.end);
+                    const currentBudgetReal = activeStep ? activeStep.amount : 0; 
+                    budgetNom = currentBudgetReal * 12 * infFactor;
+                    
+                    const netTaxRate = age >= 67 ? 0.82 : 0.70;
+                    if(age >= d.pensionGeneralStart) penNom += (d.pensionGeneral * 12 * infFactor * netTaxRate);
+                    if(age >= d.pensionServiceStart && age < (d.pensionServiceStart + d.pensionServiceYears)) {
+                        penNom += (d.pensionService * 12 * infFactor * netTaxRate);
+                    }
+                    
+                    const need = Math.max(0, budgetNom - penNom);
+                    if(cushion > 0) {
+                        const fromC = Math.min(cushion, need);
+                        cushion -= fromC;
+                        cap -= (need - fromC);
+                    } else {
+                        cap -= need;
+                    }
+                }
+
+                sim.push({ 
+                    age, 
+                    capNom: cap + cushion, capReal: (cap + cushion) / infFactor,
+                    investNom: cap, investReal: cap / infFactor,
+                    cushionNom: cushion, cushionReal: cushion / infFactor,
+                    savingNom: currentMonthlySavingNom,
+                    taxNom: taxNom, taxReal: taxNom / infFactor,
+                    pensionNetNom: penNom, pensionNetReal: penNom / infFactor,
+                    budgetNom, budgetReal: budgetNom / infFactor
+                });
+            }
+            return sim;
+        };
+
+        const updateSimulation = () => {
+            if (isOptimizing) return;
+            if (!state.endAge || !state.withdraw || !state.age) return;
+
+            const d = JSON.parse(JSON.stringify(state));
+
+            if (state.autoOptimize) {
+                isOptimizing = true;
+                let low = 0, high = 2000000, best = 0;
+                
+                for(let i = 0; i < 40; i++){
+                    let mid = (low + high) / 2;
+                    // Skapa en temporär plan för autopilot-test
+                    d.savingsPlan = [{start: state.age, end: state.stopSave, amount: mid}];
+                    const sim = runSimulationEngine(d);
+                    if(sim.length > 0 && sim[sim.length - 1].capReal > d.legacy) { high = mid; best = mid; }
+                    else { low = mid; }
+                }
+                
+                state.manualMonthlySaving = Math.round(best);
+                state.savingsPlan = [{start: state.age, end: state.stopSave, amount: Math.round(best)}];
+                results.value = runSimulationEngine(JSON.parse(JSON.stringify(state)));
+                nextTick(() => { isOptimizing = false; });
+            } else {
+                // Vid manuellt sparande, visa beloppet för första året i den svarta rutan
+                const firstYearSaving = state.savingsPlan.find(s => state.age >= s.start && state.age < s.end);
+                state.manualMonthlySaving = firstYearSaving ? firstYearSaving.amount : 0;
+                results.value = runSimulationEngine(d);
+            }
+            nextTick(renderChart);
+        };
+
+        const renderChart = () => {
+            const ctx = document.getElementById('fireChart')?.getContext('2d');
+            if(!ctx || !results.value.length) return;
+            if(chart) chart.destroy();
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: results.value.map(r => r.age),
+                    datasets: [{
+                        data: results.value.map(r => isReal.value ? r.capReal : r.capNom),
+                        borderColor: '#2563eb', borderWidth: 4, fill: true, backgroundColor: 'rgba(37, 99, 235, 0.05)', tension: 0.4, pointRadius: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } },
+                    scales: { y: { ticks: { callback: v => (v/1000000).toFixed(1) + 'M' }, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } }
+                }
+            });
+        };
+
+        const nextStep = () => {
+            if (currentStep.value < questions.length - 1) {
+                currentStep.value++;
+            } else {
+                const riktalder = calculateRetirementAge(state.age);
+                state.pensionGeneralStart = riktalder;
+                state.pensionServiceStart = riktalder;
+                state.pensionGeneral = state.salary * 0.45; 
+                state.pensionService = state.salary * 0.15;
+                state.taxFromPortfolioAge = state.withdraw;
+                state.expenses = [{start: state.withdraw, end: state.endAge, amount: state.spend}];
+                // Initiera sparplanen utifrån stopSave
+                state.savingsPlan = [{start: state.age, end: state.stopSave, amount: 0}];
+                view.value = 'results';
+                updateSimulation();
+            }
+        };
+
+        const prevStep = () => { if(currentStep.value > 0) currentStep.value--; };
+        const addSavingsPhase = () => {
+            const last = state.savingsPlan[state.savingsPlan.length - 1];
+            const start = last ? last.end : state.age;
+            state.savingsPlan.push({start: start, end: Math.min(start + 5, state.withdraw), amount: last ? last.amount : 10000});
+        };
+
+        const addExpense = () => {
+            const last = state.expenses[state.expenses.length - 1];
+            state.expenses.push({start: last ? last.end : state.withdraw, end: Math.min((last ? last.end : state.withdraw) + 10, state.endAge), amount: state.spend});
+        };
+
+        const saveToCache = () => { localStorage.setItem('fire_v7_15', JSON.stringify(state)); alert("Strategi sparad!"); };
+        const triggerUpload = () => fileInput.value.click();
+        const uploadPlan = (e) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => { Object.assign(state, JSON.parse(ev.target.result)); view.value = 'results'; updateSimulation(); };
+            reader.readAsText(e.target.files[0]);
+        };
+        const downloadPlan = () => {
+            const date = new Date().toISOString().split('T')[0];
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr); dlAnchor.setAttribute("download", `fire-plan-${date}.json`);
+            dlAnchor.click();
+        };
+
+        const resetToQuiz = () => { if(confirm("Nollställ?")) { localStorage.removeItem('fire_v7_15'); location.reload(); }};
+
+        watch(() => state, () => { if (view.value === 'results') updateSimulation(); }, { deep: true });
+        watch(isReal, renderChart);
+
+        onMounted(() => {
+            const saved = localStorage.getItem('fire_v7_15');
+            if(saved) { 
+                Object.assign(state, JSON.parse(saved)); 
+                view.value = 'results'; 
+                setTimeout(updateSimulation, 100); 
+            }
+        });
+
+        return { 
+            view, advanced, isReal, currentStep, state, results, questions, fileInput,
+            nextStep, prevStep, formatKr: v => Math.round(v).toLocaleString('sv-SE'),
+            getRowClass: a => a >= state.withdraw ? 'phase-bg-UTTAG' : (a >= state.withdraw - 3 ? 'phase-bg-BRYGGA' : 'phase-bg-SPARA'),
+            addExpense, addSavingsPhase, resetToQuiz, saveToCache, downloadPlan, triggerUpload, uploadPlan
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
